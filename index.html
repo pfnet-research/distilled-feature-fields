@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>Decomposing NeRF for Editing via Feature Field Distillation</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+          integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+
+    <!-- Custom styles for this template -->
+    <link href="web/offcanvas.css" rel="stylesheet">
+    <!--    <link rel="icon" href="img/favicon.gif" type="image/gif">-->
+</head>
+
+<body>
+<div class="jumbotron jumbotron-fluid">
+    <div class="container"></div>
+    <h2>Decomposing NeRF for Editing via Feature Field Distillation</h2>
+    <hr>
+    <p class="authors">
+        <a href="https://soskek.github.io/"> Sosuke Kobayashi</a>,
+        <a href="https://scholar.google.co.jp/citations?user=o3JW434AAAAJ"> Eiichi Matsumoto</a>,
+        <a href="https://www.vincentsitzmann.com/"> Vincent Sitzmann</a>
+    </p>
+    <div class="btn-group" role="group" aria-label="Top menu">
+        <a class="btn btn-primary" href="dff_paper.pdf">Paper</a>
+    </div>
+    <!--<p>
+    <br>
+    Project code can be found in the local directory named "code".
+    </p>-->
+</div>
+
+
+<div class="container" style="margin-top:-40px;">
+    <div class="section">
+        <h3 align="center">Abstract</h3>
+        <hr>
+        <p>
+Emerging neural radiance fields (<a href="https://www.matthewtancik.com/nerf">NeRF</a>) are a promising scene representation for computer graphics, enabling high-quality 3D reconstruction and novel view synthesis from image observations.
+However, editing a scene represented by a NeRF is challenging, as the underlying connectionist representations such as MLPs or voxel grids are not object-centric or compositional.
+In particular, it has been difficult to selectively edit specific regions or objects.
+In this work, we tackle the problem of semantic scene decomposition of NeRFs to enable query-based local editing of the represented 3D scenes.
+We propose to distill the knowledge of off-the-shelf, self-supervised 2D image feature extractors such as <a href="https://arxiv.org/abs/2201.03546">CLIP-LSeg</a> or <a href="https://arxiv.org/abs/2104.14294">DINO</a> into a 3D feature field optimized in parallel to the radiance field.
+Given a user-specified query of various modalities such as text, an image patch, or a point-and-click selection, 3D feature fields semantically decompose 3D space without the need for re-training, and enables us to semantically select and edit regions in the radiance field.
+Our experiments validate that the <i>distilled feature fields (DFFs)</i> can transfer recent progress in 2D vision and language foundation models to 3D scene representations, enabling convincing 3D segmentation and selective editing of emerging neural graphics representations.
+        <br>
+        <br>
+        <b> TL;DR </b> Neural radiance fields can be edited via decomposition with arbitrary queries and feature fields distilled from pre-trained vision models.
+        </p>
+	<img src="web/img/overview.png"
+             style="width:80%; margin-right:-20px; margin-top:20px;">
+        <video class="video" autoplay="true" loop="true" style="width:20%" autoplay muted>
+          <source src="web/mov/flowers_transition_x2.mp4">
+        </video>
+    </div>
+
+    <div class="section">
+        <h2>Results</h2>
+        <hr>
+    </div>
+
+    <p>
+      Our <i>distilled feature fields (DFFs)</i> are trained by distilling 2D vision encoders such as <a href="https://arxiv.org/abs/2201.03546">LSeg</a> (CLIP-based zero-shot segmentation model) or <a href="https://arxiv.org/abs/2104.14294">DINO</a> (self-supervised model with good performances in part correspondense tasks) without any 3D or 2D annotations.
+      The learned feature fields can map every 3D coordinate to a semantic feature descriptor of that coordinate as well as radinace fields.
+      We can segment the 3D space and the corresponding radiance fields by querying a feature vector and calculating scores via dot product.
+    </p>
+
+    <div class="section">
+        <h3>Query-based Scene Decomposition</h3>
+        <p>
+	  Distilled feature fields enable NeRF to decompose a specific object with a text query like "flower" or an image-patch query.
+        </p>
+	<div style="display: flex; padding: 0px">
+	  <div style="max-width: 16%">
+	    <h5 align="center">Raw rendering</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.raw_flower.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="width: 4%"></div>
+	  <div style="max-width: 16%">
+	    <h5 align="center">Extraction</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.flower_extraction.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 16%">
+	    <h5 align="center">Deletion</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.flower_deletion.30.60.mp4">
+            </video>
+	  </div>
+	</div>
+	<br>
+	<h3>Localizing CLIPNeRF via Scene Decomposition</h3>
+        <p>
+	  CLIPNeRF optimizes a NeRF scene with a text prompt.
+	  However, naive CLIPNeRF poisons unintentional parts.
+	  We can combine our decomposition method with CLIPNeRF and selectively optimize the target object.
+        </p>
+	<div style="display: flex; padding: 0px; margin-bottom: -0.5rem;">
+	  <div style="width: 16%">
+	    <h5 align="center">naive CLIPNeRF</h5>
+	  </div>
+	  <div style="width: 4%"></div>
+	  <div style="width: 16%">
+	    <h5 align="center">+ Our method</h5>
+	  </div>
+	</div>
+	<div style="display: flex; padding: 0px">
+	  <div style="max-width: 16%">
+	    <h5 align="center">white flower</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.leaked_white_flower.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="width: 4%"></div>
+	  <div style="max-width: 16%">
+	    <h5 align="center">white flower</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.white_flower.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 16%">
+	    <h5 align="center">yellow flower</h5>
+            <video class="video" autoplay="true" loop="true"  style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.yellow_flower.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 16%">
+	    <h5 align="center">sunflower</h5>
+            <video class="video" autoplay="true" loop="true"  style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.sunflower.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 16%">
+	    <h5 align="center">rainbow flower</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.rainbow_flower.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 16%">
+	    <h5 align="center">petunia</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.petunia.30.60.mp4">
+            </video>
+	  </div>
+	</div>
+    </div>
+
+    <div class="section">
+        <h3>Other Editings</h3>
+	<p>
+	  We can edit decomposed objects of NeRF scenes in various ways, e.g., rotate, translate, scale, warp into another scene, colorize, or delete them.
+        </p>
+	<div style="display: flex; padding: 0px">
+	  <div style="max-width: 25%">
+	    <h5 align="center">move and deform apple</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.deform_apple.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">(LSeg field)</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.deform_apple_feature.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">warp horns</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.warp_horns_to_room.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">(DINO field)</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.warp_horns_to_room_feature.30.60.mp4">
+            </video>
+	  </div>
+	</div>	
+	<br>
+
+	<div style="display: flex; padding: 0px; margin-bottom: -0.5rem;">
+	  <div style="width: 25%">
+	    <h5 align="left">colorize</h5>
+	  </div>
+	</div>
+	<div style="display: flex; padding: 0px">
+	  <div style="max-width: 25%">
+	    <h5 align="center">light</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.light_color.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">chair</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.chair_color.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">television</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.television_color.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">floor</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.floor_color.30.60.mp4">
+            </video>
+	  </div>
+	</div>
+	<br>
+	<div style="display: flex; padding: 0px; margin-bottom: -0.3rem;">
+	  <div style="width: 100%">
+	    <h5 align="left" style="display:inline;">delete</h5>
+	    &nbsp;&nbsp;<p style="display:inline; color:silver;">(Note that the background behind the deleted objects can be noisy or have a hole because it lacks observation.)</p>
+	  </div>
+	</div>
+	<div style="display: flex; padding: 0px">
+	  <div style="max-width: 25%">
+	    <h5 align="center">light</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.light_deletion.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">chair</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.chair_deletion.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">television</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.television_deletion.30.60.mp4">
+            </video>
+	  </div>
+	  <div style="max-width: 25%">
+	    <h5 align="center">floor</h5>
+            <video class="video" autoplay="true" loop="true" style="margin-top: -1rem;" autoplay muted>
+              <source src="web/mov/out.floor_deletion.30.60.mp4">
+            </video>
+	  </div>
+	</div>
+
+    </div>
+    <br><br>
+    <div class="section">
+      <h3>Other DINO Feature Fields</h3>
+      <p>We visualize feature fields distilled from DINO as a techer network by PCA. Scenes are from <a href="https://bmild.github.io/llff/">LLFF</a>, <a href="https://nex-mpi.github.io/">shiny dataset</a>, and our dataset.</p>
+      <div style="display: flex; padding: 0px">
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_0.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_1.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_2.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_3.png" style="max-width: 100%">
+	</div>
+      </div>
+      <div style="display: flex; padding: 0px">
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_4.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_5.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_6.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_7.png" style="max-width: 100%">
+	</div>
+      </div>
+      <div style="display: flex; padding: 0px">
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_8.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_9.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_10.png" style="max-width: 100%">
+	</div>
+	<div style="max-width: 25%">
+	  <img src="web/img/dino_fields/rgb_feat_11.png" style="max-width: 100%">
+	</div>
+      </div>
+    </div>
+
+    <br>
+    <br>
+    <div class="section">
+      <h3>Citation</h3>
+      <div class="form-group col-md-10">
+        <textarea id="bibtex" class="form-control" rows=6 readonly>
+@article{kobayashi2022distilledfeaturefields,
+  title={Decomposing NeRF for Editing via Feature Field Distillation},
+  author={Sosuke Kobayashi and Eiichi Matsumoto and Vincent Sitzmann},
+  journal={arXiv},
+  year={2022}
+}</textarea>
+      </div>
+    </div>
+
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
+            integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+            integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+            crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"
+            integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI"
+            crossorigin="anonymous"></script>
+
+</body>
+</html>
