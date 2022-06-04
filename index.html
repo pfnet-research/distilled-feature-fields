@@ -116,11 +116,16 @@ function initComparisons() {
 
 
 <div class="container" style="margin-top:-40px;">
-  <br><br><br>  
+  <br>
     <div class="section">
         <h3 align="center">Abstract</h3>
         <hr>
         <p>
+	  <div style="width: 30%; float: right; margin-bottom: -5px; margin-left: -5px;">
+	    <video class="video" autoplay="true" loop="true" style="" autoplay muted>
+              <source src="web/mov/demo.m4v">
+	    </video>
+	  </div>
 Emerging neural radiance fields (<a href="https://www.matthewtancik.com/nerf">NeRF</a>) are a promising scene representation for computer graphics, enabling high-quality 3D reconstruction and novel view synthesis from image observations.
 However, editing a scene represented by a NeRF is challenging, as the underlying connectionist representations such as MLPs or voxel grids are not object-centric or compositional.
 In particular, it has been difficult to selectively edit specific regions or objects.
@@ -128,6 +133,7 @@ In this work, we tackle the problem of semantic scene decomposition of NeRFs to 
 We propose to distill the knowledge of off-the-shelf, self-supervised 2D image feature extractors such as <a href="https://arxiv.org/abs/2201.03546">CLIP-LSeg</a> or <a href="https://arxiv.org/abs/2104.14294">DINO</a> into a 3D feature field optimized in parallel to the radiance field.
 Given a user-specified query of various modalities such as text, an image patch, or a point-and-click selection, 3D feature fields semantically decompose 3D space without the need for re-training, and enables us to semantically select and edit regions in the radiance field.
 Our experiments validate that the <i>distilled feature fields (DFFs)</i> can transfer recent progress in 2D vision and language foundation models to 3D scene representations, enabling convincing 3D segmentation and selective editing of emerging neural graphics representations.
+
         <br>
         <br>
         <b> TL;DR </b> Neural radiance fields can be edited via decomposition with arbitrary queries and feature fields distilled from pre-trained vision models.
@@ -150,7 +156,6 @@ Our experiments validate that the <i>distilled feature fields (DFFs)</i> can tra
       The learned feature fields can map every 3D coordinate to a semantic feature descriptor of that coordinate as well as radinace fields.
       We can segment the 3D space and the corresponding radiance fields by querying a feature vector and calculating scores via dot product.
     </p>
-
     <div class="section">
         <h3>Query-based Scene Decomposition</h3>
         <p>
