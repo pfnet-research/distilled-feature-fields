@@ -60,4 +60,7 @@ def get_opts():
     parser.add_argument('--weight_path', type=str, default=None,
                         help='pretrained checkpoint to load (excluding optimizers, etc)')
 
+    parser.add_argument('--feature_directory', type=str, default=None)
+    parser.add_argument('--feature_dim', type=int, default=None)
+
     return parser.parse_args()

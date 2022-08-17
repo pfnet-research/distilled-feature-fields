@@ -7,6 +7,8 @@ import imageio
 import numpy as np
 import cv2
 from einops import rearrange
+import os
+os.environ["TORCH_HOME"] = "/tmp/torch/"
 
 # data
 from torch.utils.data import DataLoader
@@ -68,7 +70,10 @@ class NeRFSystem(LightningModule):
                 p.requires_grad = False
 
         rgb_act = 'None' if self.hparams.use_exposure else 'Sigmoid'
-        self.model = NGP(scale=self.hparams.scale, rgb_act=rgb_act)
+        if hparams.feature_directory is not None:
+            assert hparams.feature_dim is not None, "set feature_dim for using feature field"
+        self.model = NGP(scale=self.hparams.scale, rgb_act=rgb_act,
+                         feature_out_dim=hparams.feature_dim)
         G = self.model.grid_size
         self.model.register_buffer('density_grid',
             torch.zeros(self.model.cascades, G**3))
@@ -86,8 +91,7 @@ class NeRFSystem(LightningModule):
         if self.hparams.optimize_ext:
             dR = axisangle_to_R(self.dR[batch['img_idxs']])
             poses[..., :3] = dR @ poses[..., :3]
-            dT = self.dT[batch['img_idxs']]
-            poses[..., 3] += dT
+            poses[..., 3] += self.dT[batch['img_idxs']]
 
         rays_o, rays_d = get_rays(directions, poses)
 
@@ -97,6 +101,8 @@ class NeRFSystem(LightningModule):
             kwargs['exp_step_factor'] = 1/256
         if self.hparams.use_exposure:
             kwargs['exposure'] = batch['exposure']
+        if split=='test':
+            kwargs['render_feature'] = True
 
         return render(self.model, rays_o, rays_d, **kwargs)
 
@@ -104,7 +110,10 @@ class NeRFSystem(LightningModule):
         dataset = dataset_dict[self.hparams.dataset_name]
         kwargs = {'root_dir': self.hparams.root_dir,
                   'downsample': self.hparams.downsample}
-        self.train_dataset = dataset(split=self.hparams.split, **kwargs)
+        self.train_dataset = dataset(split=self.hparams.split,
+                                     load_features=hparams.feature_directory is not None,
+                                     feature_directory=hparams.feature_directory,
+                                     **kwargs)
         self.train_dataset.batch_size = self.hparams.batch_size
         self.train_dataset.ray_sampling_strategy = self.hparams.ray_sampling_strategy
 
@@ -132,10 +141,7 @@ class NeRFSystem(LightningModule):
         self.net_opt = FusedAdam(net_params, self.hparams.lr, eps=1e-15)
         opts += [self.net_opt]
         if self.hparams.optimize_ext:
-            # learning rate is hard-coded
-            pose_r_opt = FusedAdam([self.dR], 1e-6)
-            pose_t_opt = FusedAdam([self.dT], 1e-6)
-            opts += [pose_r_opt, pose_t_opt]
+            opts += [FusedAdam([self.dR, self.dT], 1e-6)] # learning rate is hard-coded
         net_sch = CosineAnnealingLR(self.net_opt,
                                     self.hparams.num_epochs,
                                     self.hparams.lr/30)
@@ -168,6 +174,11 @@ class NeRFSystem(LightningModule):
 
         results = self(batch, split='train')
         loss_d = self.loss(results, batch)
+
+        if 'feature' in results:
+            loss_d['feature'] = ((results['feature'] - batch['feature']) ** 2).mean()
+            self.log('train/loss_f', loss_d['feature'])
+
         if self.hparams.use_exposure:
             zero_radiance = torch.zeros(1, 3, device=self.device)
             unit_exposure_rgb = self.model.log_radiance_to_rgb(zero_radiance,
@@ -215,6 +226,30 @@ class NeRFSystem(LightningModule):
 
         if not self.hparams.no_save_test: # save test image to disk
             idx = batch['img_idxs']
+            rgb_pred = rearrange(results['rgb'].cpu().numpy(), '(h w) c -> h w c', h=h)
+            rgb_pred = (rgb_pred*255).astype(np.uint8)
+            depth = depth2img(rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
+            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}.png'), rgb_pred)
+            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_d.png'), depth)
+
+            # visualize PCA feature
+            with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.float32):
+                if not hasattr(self, 'proj_V'):
+                    U, S, V = torch.pca_lowrank(
+                        (results['feature'] - results['feature'].mean(0)[None]).float(),
+                        niter=5)
+                    self.proj_V = V[:, :3].float()
+                    lowrank = torch.matmul(results['feature'].float(), self.proj_V)
+                    self.lowrank_sub = lowrank.min(0, keepdim=True)[0]
+                    self.lowrank_div = lowrank.max(0, keepdim=True)[0] - lowrank.min(0, keepdim=True)[0]
+                else:
+                    lowrank = torch.matmul(results['feature'].float(), self.proj_V)
+                lowrank = ((lowrank - lowrank.min(0, keepdim=True)[0]) / (lowrank.max(0, keepdim=True)[0] - lowrank.min(0, keepdim=True)[0])).clip(0, 1)
+
+                visfeat = rearrange(lowrank.cpu().numpy(), '(h w) c -> h w c', h=h)
+                visfeat = (visfeat*255).astype(np.uint8)
+                imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_f.png'), visfeat)
+
             rgb_pred = rearrange(results['rgb'].cpu().numpy(), '(h w) c -> h w c', h=h)
             rgb_pred = (rgb_pred*255).astype(np.uint8)
             depth = depth2img(rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))

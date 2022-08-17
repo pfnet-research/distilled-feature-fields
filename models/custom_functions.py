@@ -131,30 +131,30 @@ class VolumeRenderer(torch.autograd.Function):
     Outputs:
         opacity: (N_rays)
         depth: (N_rays)
-        depth_sq: (N_rays) expected value of squared distance
         rgb: (N_rays, 3)
+        ws: (N) sample point weights
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, sigmas, rgbs, deltas, ts, rays_a, T_threshold):
-        opacity, depth, depth_sq, rgb = \
+        opacity, depth, rgb, ws = \
             vren.composite_train_fw(sigmas, rgbs, deltas, ts,
                                     rays_a, T_threshold)
         ctx.save_for_backward(sigmas, rgbs, deltas, ts, rays_a,
-                              opacity, depth, depth_sq, rgb)
+                              opacity, depth, rgb, ws)
         ctx.T_threshold = T_threshold
-        return opacity, depth, depth_sq, rgb
+        return opacity, depth, rgb, ws
 
     @staticmethod
     @custom_bwd
-    def backward(ctx, dL_dopacity, dL_ddepth, dL_ddepth_sq, dL_drgb):
+    def backward(ctx, dL_dopacity, dL_ddepth, dL_drgb, dL_dws):
         sigmas, rgbs, deltas, ts, rays_a, \
-        opacity, depth, depth_sq, rgb = ctx.saved_tensors
+        opacity, depth, rgb, ws = ctx.saved_tensors
         dL_dsigmas, dL_drgbs = \
-            vren.composite_train_bw(dL_dopacity, dL_ddepth, dL_ddepth_sq,
-                                    dL_drgb, sigmas, rgbs, deltas, ts,
+            vren.composite_train_bw(dL_dopacity, dL_ddepth, dL_drgb, dL_dws,
+                                    sigmas, rgbs, ws, deltas, ts,
                                     rays_a,
-                                    opacity, depth, depth_sq, rgb,
+                                    opacity, depth, rgb,
                                     ctx.T_threshold)
         return dL_dsigmas, dL_drgbs, None, None, None, None
 

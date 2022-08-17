@@ -129,37 +129,37 @@ std::vector<torch::Tensor> composite_train_fw(
 std::vector<torch::Tensor> composite_train_bw(
     const torch::Tensor dL_dopacity,
     const torch::Tensor dL_ddepth,
-    const torch::Tensor dL_ddepth_sq,
     const torch::Tensor dL_drgb,
+    const torch::Tensor dL_dws,
     const torch::Tensor sigmas,
     const torch::Tensor rgbs,
+    const torch::Tensor ws,
     const torch::Tensor deltas,
     const torch::Tensor ts,
     const torch::Tensor rays_a,
     const torch::Tensor opacity,
     const torch::Tensor depth,
-    const torch::Tensor depth_sq,
     const torch::Tensor rgb,
     const float opacity_threshold
 ){
     CHECK_INPUT(dL_dopacity);
     CHECK_INPUT(dL_ddepth);
-    CHECK_INPUT(dL_ddepth_sq);
     CHECK_INPUT(dL_drgb);
+    CHECK_INPUT(dL_dws);
     CHECK_INPUT(sigmas);
     CHECK_INPUT(rgbs);
+    CHECK_INPUT(ws);
     CHECK_INPUT(deltas);
     CHECK_INPUT(ts);
     CHECK_INPUT(rays_a);
     CHECK_INPUT(opacity);
     CHECK_INPUT(depth);
-    CHECK_INPUT(depth_sq);
     CHECK_INPUT(rgb);
 
     return composite_train_bw_cu(
-                dL_dopacity, dL_ddepth, dL_ddepth_sq, dL_drgb,
-                sigmas, rgbs, deltas, ts, rays_a,
-                opacity, depth, depth_sq, rgb, opacity_threshold);
+                dL_dopacity, dL_ddepth, dL_drgb, dL_dws,
+                sigmas, rgbs, ws, deltas, ts, rays_a,
+                opacity, depth, rgb, opacity_threshold);
 }
 
 
@@ -194,6 +194,43 @@ void composite_test_fw(
 }
 
 
+std::vector<torch::Tensor> distortion_loss_fw(
+    const torch::Tensor ws,
+    const torch::Tensor deltas,
+    const torch::Tensor ts,
+    const torch::Tensor rays_a
+){
+    CHECK_INPUT(ws);
+    CHECK_INPUT(deltas);
+    CHECK_INPUT(ts);
+    CHECK_INPUT(rays_a);
+
+    return distortion_loss_fw_cu(ws, deltas, ts, rays_a);
+}
+
+
+torch::Tensor distortion_loss_bw(
+    const torch::Tensor dL_dloss,
+    const torch::Tensor ws_prefix_sum,
+    const torch::Tensor wts_prefix_sum,
+    const torch::Tensor ws,
+    const torch::Tensor deltas,
+    const torch::Tensor ts,
+    const torch::Tensor rays_a
+){
+    CHECK_INPUT(dL_dloss);
+    CHECK_INPUT(ws_prefix_sum);
+    CHECK_INPUT(wts_prefix_sum);
+    CHECK_INPUT(ws);
+    CHECK_INPUT(deltas);
+    CHECK_INPUT(ts);
+    CHECK_INPUT(rays_a);
+
+    return distortion_loss_bw_cu(dL_dloss, ws_prefix_sum, wts_prefix_sum,
+                                 ws, deltas, ts, rays_a);
+}
+
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m){
     m.def("ray_aabb_intersect", &ray_aabb_intersect);
     m.def("ray_sphere_intersect", &ray_sphere_intersect);
@@ -207,5 +244,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m){
     m.def("composite_train_fw", &composite_train_fw);
     m.def("composite_train_bw", &composite_train_bw);
     m.def("composite_test_fw", &composite_test_fw);
+
+    m.def("distortion_loss_fw", &distortion_loss_fw);
+    m.def("distortion_loss_bw", &distortion_loss_bw);
 
 }

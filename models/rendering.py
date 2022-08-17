@@ -23,6 +23,7 @@ def render(model, rays_o, rays_d, **kwargs):
         result: dictionary containing final rgb and depth
     """
     rays_o = rays_o.contiguous(); rays_d = rays_d.contiguous()
+    rays_d = torch.nn.functional.normalize(rays_d, dim=-1, eps=1e-15).contiguous()
     _, hits_t, _ = \
         RayAABBIntersector.apply(rays_o, rays_d, model.center, model.half_size, 1)
     hits_t[(hits_t[:, 0, 0]>=0)&(hits_t[:, 0, 0]<NEAR_DISTANCE), 0, 0] = NEAR_DISTANCE
@@ -65,6 +66,8 @@ def __render_rays_test(model, rays_o, rays_d, hits_t, **kwargs):
     depth = torch.zeros(N_rays, device=device)
     rgb = torch.zeros(N_rays, 3, device=device)
 
+    use_feature = model.feature_out_dim is not None
+
     samples = total_samples = 0
     alive_indices = torch.arange(N_rays, device=device)
     # if it's synthetic data, bg is majority so min_samples=1 effectively covers the bg
@@ -92,7 +95,7 @@ def __render_rays_test(model, rays_o, rays_d, hits_t, **kwargs):
 
         sigmas = torch.zeros(len(xyzs), device=device)
         rgbs = torch.zeros(len(xyzs), 3, device=device)
-        _sigmas, _rgbs = model(xyzs[valid_mask], dirs[valid_mask], **kwargs)
+        _sigmas, _rgbs = model(xyzs[valid_mask], dirs[valid_mask], skip_feature=True, **kwargs)
         sigmas[valid_mask], rgbs[valid_mask] = _sigmas.float(), _rgbs.float()
         sigmas = rearrange(sigmas, '(n1 n2) -> n1 n2', n2=N_samples)
         rgbs = rearrange(rgbs, '(n1 n2) c -> n1 n2 c', n2=N_samples)
@@ -107,6 +110,11 @@ def __render_rays_test(model, rays_o, rays_d, hits_t, **kwargs):
     results['depth'] = depth
     results['rgb'] = rgb
     results['total_samples'] = total_samples # total samples for all rays
+
+    if kwargs.get('render_feature', False):
+        with torch.no_grad():
+            surfaces = rays_o + rays_d * results['depth'].detach()[..., None]
+            results['feature'] = model.encode_feature(surfaces)
 
     if exp_step_factor==0: # synthetic
         rgb_bg = torch.ones(3, device=device)
@@ -132,7 +140,7 @@ def __render_rays_train(model, rays_o, rays_d, hits_t, **kwargs):
     exp_step_factor = kwargs.get('exp_step_factor', 0.)
     results = {}
 
-    rays_a, xyzs, dirs, deltas, ts, total_samples = \
+    rays_a, xyzs, dirs, results['deltas'], results['ts'], total_samples = \
         RayMarcher.apply(
             rays_o, rays_d, hits_t[:, 0], model.density_bitfield,
             model.cascades, model.scale,
@@ -142,11 +150,15 @@ def __render_rays_train(model, rays_o, rays_d, hits_t, **kwargs):
     for k, v in kwargs.items(): # supply additional inputs, repeated per ray
         if isinstance(v, torch.Tensor):
             kwargs[k] = torch.repeat_interleave(v[rays_a[:, 0]], rays_a[:, 2], 0)
-    sigmas, rgbs = model(xyzs, dirs, **kwargs)
+    sigmas, rgbs = model(xyzs, dirs, skip_feature=True, **kwargs)
 
-    results['opacity'], results['depth'], _, results['rgb'] = \
-        VolumeRenderer.apply(sigmas, rgbs.contiguous(), deltas, ts,
+    results['opacity'], results['depth'], results['rgb'], results['ws'] = \
+        VolumeRenderer.apply(sigmas, rgbs.contiguous(), results['deltas'], results['ts'],
                              rays_a, kwargs.get('T_threshold', 1e-4))
+    results['rays_a'] = rays_a
+
+    surfaces = rays_o + rays_d * results['depth'].detach()[..., None]
+    results['feature'] = model.encode_feature(surfaces)
 
     if exp_step_factor==0: # synthetic
         rgb_bg = torch.ones(3, device=rays_o.device)

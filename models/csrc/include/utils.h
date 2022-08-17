@@ -77,16 +77,16 @@ std::vector<torch::Tensor> composite_train_fw_cu(
 std::vector<torch::Tensor> composite_train_bw_cu(
     const torch::Tensor dL_dopacity,
     const torch::Tensor dL_ddepth,
-    const torch::Tensor dL_ddepth_sq,
     const torch::Tensor dL_drgb,
+    const torch::Tensor dL_dws,
     const torch::Tensor sigmas,
     const torch::Tensor rgbs,
+    const torch::Tensor ws,
     const torch::Tensor deltas,
     const torch::Tensor ts,
     const torch::Tensor rays_a,
     const torch::Tensor opacity,
     const torch::Tensor depth,
-    const torch::Tensor depth_sq,
     const torch::Tensor rgb,
     const float T_threshold
 );
@@ -104,4 +104,23 @@ void composite_test_fw_cu(
     torch::Tensor opacity,
     torch::Tensor depth,
     torch::Tensor rgb
+);
+
+
+std::vector<torch::Tensor> distortion_loss_fw_cu(
+    const torch::Tensor ws,
+    const torch::Tensor deltas,
+    const torch::Tensor ts,
+    const torch::Tensor rays_a
+);
+
+
+torch::Tensor distortion_loss_bw_cu(
+    const torch::Tensor dL_dloss,
+    const torch::Tensor ws_prefix_sum,
+    const torch::Tensor wts_prefix_sum,
+    const torch::Tensor ws,
+    const torch::Tensor deltas,
+    const torch::Tensor ts,
+    const torch::Tensor rays_a
 );

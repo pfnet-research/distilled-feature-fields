@@ -9,10 +9,11 @@ from .rendering import NEAR_DISTANCE
 
 
 class NGP(nn.Module):
-    def __init__(self, scale, rgb_act='Sigmoid'):
+    def __init__(self, scale, rgb_act='Sigmoid', feature_out_dim=None):
         super().__init__()
 
         self.rgb_act = rgb_act
+        self.feature_out_dim = feature_out_dim
 
         # scene bounding box
         self.scale = scale
@@ -90,6 +91,43 @@ class NGP(nn.Module):
                     )
                 setattr(self, f'tonemapper_net_{i}', tonemapper_net)
 
+        if self.feature_out_dim is not None:
+            L = 16; F = 2; log2_T = 19; N_min = 16
+            # b = np.exp(np.log(2048*scale/N_min)/(L-1))
+            b = np.exp(np.log(128*scale/N_min)/(L-1))  # feature is of lower-frequency
+            self.feature_encoder = tcnn.NetworkWithInputEncoding(
+                n_input_dims=3, n_output_dims=self.feature_out_dim,
+                encoding_config={
+                    "otype": "Grid",
+	            "type": "Hash",
+                    "n_levels": L,
+                    "n_features_per_level": F,
+                    "log2_hashmap_size": log2_T,
+                    "base_resolution": N_min,
+                    "per_level_scale": b,
+                    "interpolation": "Linear"
+                },
+                network_config={
+                    "otype": "FullyFusedMLP",
+                    "activation": "ReLU",
+                    "output_activation": "None",
+                    "n_neurons": 64,
+                    "n_hidden_layers": 2,
+                }
+            )
+            self.basenet_to_feature = tcnn.Network(
+                n_input_dims=16+3, n_output_dims=self.feature_out_dim,
+                network_config={
+                    "otype": "FullyFusedMLP",
+                    "activation": "ReLU",
+                    "output_activation": "None",
+                    "n_neurons": 32,
+                    "n_hidden_layers": 1,
+                }
+            )
+        else:
+            self.feature_encoder = None
+
     def density(self, x, return_feat=False):
         """
         Inputs:
@@ -149,7 +187,16 @@ class NGP(nn.Module):
             else: # convert to LDR using tonemapper networks
                 rgbs = self.log_radiance_to_rgb(rgbs, **kwargs)
 
-        return sigmas, rgbs
+        if self.feature_encoder is not None and not kwargs.get('skip_feature', False):
+            features = self.encode_feature(x)
+            features = features + self.basenet_to_feature(torch.cat([h, rgbs]).detach())
+            return sigmas, rgbs, features
+        else:
+            return sigmas, rgbs
+
+    def encode_feature(self, x):
+        features = self.feature_encoder((x-self.xyz_min)/(self.xyz_max-self.xyz_min))
+        return features
 
     @torch.no_grad()
     def get_all_cells(self):
@@ -207,7 +254,8 @@ class NGP(nn.Module):
         """
         N_cams = poses.shape[0]
         self.count_grid = torch.zeros_like(self.density_grid)
-        w2c_R = poses[:, :3, :3].mT # (N_cams, 3, 3) batch transpose
+        # w2c_R = poses[:, :3, :3].mT # (N_cams, 3, 3) batch transpose
+        w2c_R = poses[:, :3, :3].transpose(1, 2) # (N_cams, 3, 3) batch transpose
         w2c_T = -w2c_R@poses[:, :3, 3:] # (N_cams, 3, 1)
         cells = self.get_all_cells()
         for c in range(self.cascades):

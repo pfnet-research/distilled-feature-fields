@@ -54,6 +54,14 @@ class ColmapDataset(BaseDataset):
             folder = f'images_{int(1/self.downsample)}'
         else:
             folder = 'images'
+        if kwargs.get('load_features', False):
+            # TODO: on-the-fly encoding
+            feature_folder = kwargs.get('feature_directory', os.path.join(self.root_dir, 'features'))
+            feature_paths = [os.path.join(feature_folder, os.path.splitext(name)[0] + '_fmap_CxHxW.pt') for name in sorted(img_names)]
+            print("feature_paths", feature_paths)
+        else:
+            feature_folder = None
+            feature_paths = []
         # read successfully reconstructed images and ignore others
         img_paths = [os.path.join(self.root_dir, folder, name)
                      for name in sorted(img_names)]
@@ -118,17 +126,21 @@ class ColmapDataset(BaseDataset):
             # use every 8th image as test set
             if split=='train':
                 img_paths = [x for i, x in enumerate(img_paths) if i%8!=0]
+                feature_paths = [x for i, x in enumerate(feature_paths) if i%8!=0]
                 self.poses = np.array([x for i, x in enumerate(self.poses) if i%8!=0])
             elif split=='test':
                 img_paths = [x for i, x in enumerate(img_paths) if i%8==0]
+                feature_paths = [x for i, x in enumerate(feature_paths) if i%8==0]
                 self.poses = np.array([x for i, x in enumerate(self.poses) if i%8==0])
 
         print(f'Loading {len(img_paths)} {split} images ...')
-        for img_path in tqdm(img_paths):
+        self.features = []
+        for i, img_path in enumerate(tqdm(img_paths)):
             buf = [] # buffer for ray attributes: rgb, etc
 
-            img = read_image(img_path, self.img_wh)
-            buf += [torch.FloatTensor(img)]
+            img = read_image(img_path, self.img_wh, blend_a=False)
+            img = torch.FloatTensor(img)
+            buf += [img]
 
             if 'HDR-NeRF' in self.root_dir: # get exposure
                 folder = self.root_dir.split('/')
@@ -153,6 +165,9 @@ class ColmapDataset(BaseDataset):
                 buf += [e_dict[e]*torch.ones_like(img[:, :1])]
 
             self.rays += [torch.cat(buf, 1)]
+
+            if feature_paths:
+                self.features.append(torch.load(feature_paths[i]))
 
         self.rays = torch.stack(self.rays) # (N_images, hw, ?)
         self.poses = torch.FloatTensor(self.poses) # (N_images, 3, 4)

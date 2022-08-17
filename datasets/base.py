@@ -1,5 +1,6 @@
 from torch.utils.data import Dataset
 import numpy as np
+import torch
 
 
 class BaseDataset(Dataset):
@@ -31,6 +32,27 @@ class BaseDataset(Dataset):
             rays = self.rays[img_idxs, pix_idxs]
             sample = {'img_idxs': img_idxs, 'pix_idxs': pix_idxs,
                       'rgb': rays[:, :3]}
+            # print(idx, img_idxs, pix_idxs[:3])
+
+
+            if hasattr(self, 'features'):
+                if self.ray_sampling_strategy == 'all_images':
+                    # TODO
+                    raise NotImplementedError
+                elif self.ray_sampling_strategy == 'same_image':
+                    feature_map = self.features[img_idxs][None].float()  # chw->1chw
+                    u = (pix_idxs % self.img_wh[0] / self.img_wh[0]) * 2 - 1
+                    v = (pix_idxs // self.img_wh[0] / self.img_wh[1]) * 2 - 1
+                    #print(u.shape, v.shape)
+                    #print(u.min(), u.mean(), u.max())
+                    #print(v.min(), v.mean(), v.max())
+                    with torch.no_grad():
+                        sampler = torch.tensor(np.stack([u, v], axis=-1)[None, None]).float()  # N2->11N2
+                        # TODO: sparse supervision
+                        feats = torch.nn.functional.grid_sample(feature_map, sampler, mode='bilinear', align_corners=True)  # 1c1N
+                        feats = feats[0, :, 0].T  # 1c1N->cN->Nc
+                    sample['feature'] = feats
+
             if self.rays.shape[-1] == 4: # HDR-NeRF data
                 sample['exposure'] = rays[:, 3:]
         else:
