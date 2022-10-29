@@ -16,6 +16,13 @@ class ColmapDataset(BaseDataset):
     def __init__(self, root_dir, split='train', downsample=1.0, len_per_epoch=1000, **kwargs):
         super().__init__(root_dir, split, downsample, len_per_epoch)
 
+        if os.path.exists(os.path.join(self.root_dir, 'sparse/0/images.bin')):
+            self.sparse_dir = "sparse/0"
+        elif os.path.exists(os.path.join(self.root_dir, 'sparse/images.bin')):
+            self.sparse_dir = "sparse"
+        else:
+            raise NotImplementedError
+
         self.read_intrinsics()
 
         if kwargs.get('read_meta', True):
@@ -23,7 +30,7 @@ class ColmapDataset(BaseDataset):
 
     def read_intrinsics(self):
         # Step 1: read and scale intrinsics (same for all images)
-        camdata = read_cameras_binary(os.path.join(self.root_dir, 'sparse/0/cameras.bin'))
+        camdata = read_cameras_binary(os.path.join(self.root_dir, self.sparse_dir, 'cameras.bin'))
         h = int(camdata[1].height*self.downsample)
         w = int(camdata[1].width*self.downsample)
         self.img_wh = (w, h)
@@ -47,7 +54,7 @@ class ColmapDataset(BaseDataset):
     def read_meta(self, split, **kwargs):
         # Step 2: correct poses
         # read extrinsics (of successfully reconstructed images)
-        imdata = read_images_binary(os.path.join(self.root_dir, 'sparse/0/images.bin'))
+        imdata = read_images_binary(os.path.join(self.root_dir, self.sparse_dir, 'images.bin'))
         img_names = [imdata[k].name for k in imdata]
         perm = np.argsort(img_names)
         if '360_v2' in self.root_dir and self.downsample<1: # mipnerf360 data
@@ -74,7 +81,7 @@ class ColmapDataset(BaseDataset):
         w2c_mats = np.stack(w2c_mats, 0)
         poses = np.linalg.inv(w2c_mats)[perm, :3] # (N_images, 3, 4) cam2world matrices
 
-        pts3d = read_points3d_binary(os.path.join(self.root_dir, 'sparse/0/points3D.bin'))
+        pts3d = read_points3d_binary(os.path.join(self.root_dir, self.sparse_dir, 'points3D.bin'))
         pts3d = np.array([pts3d[k].xyz for k in pts3d]) # (N, 3)
 
         self.poses, self.pts3d = center_poses(poses, pts3d)

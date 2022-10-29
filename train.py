@@ -148,7 +148,7 @@ class NeRFSystem(LightningModule):
         losses = {'cliploss': clip_loss.mean()}
 
         # render for debug
-        render_for_debug = True
+        render_for_debug = False
         if render_for_debug:
             rgb_pred = (rendered_patch.detach().permute(0, 2, 3, 1)[0].cpu().numpy()*255).astype(np.uint8)  # (h,w,c)
             imageio.imsave('tmpdebug_{}__{}.png'.format(time.time(), clip_loss.mean()), rgb_pred)
@@ -320,7 +320,8 @@ class NeRFSystem(LightningModule):
 
     def validation_step(self, batch, batch_nb):
         rgb_gt = batch['rgb']
-        results = self(batch, split='test')
+        with torch.no_grad():
+            results = self(batch, split='test')
 
         logs = {}
         # compute each metric per image

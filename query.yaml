@@ -12,6 +12,6 @@ edit:
   operations:
     - edit_type: "extraction"
     #- edit_type: "deletion"
-    - edit_type: "color_func"
-      func_str: "lambda c: c[..., [2,1,0]]"  # rgb -> bgr
+    #- edit_type: "color_func"
+    #  func_str: "lambda c: c[..., [2,1,0]]"  # rgb -> bgr
   # edit_type: 
