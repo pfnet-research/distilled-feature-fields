@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import tinycudann as tcnn
 import vren
+from einops import rearrange
 from .custom_functions import TruncExp
 import numpy as np
 
@@ -14,6 +15,9 @@ class NGP(nn.Module):
 
         self.rgb_act = rgb_act
         self.feature_out_dim = feature_out_dim
+        self.query_features = None
+        self.positive_ids = [0]
+        self.score_threshold = None
 
         # scene bounding box
         self.scale = scale
@@ -30,28 +34,73 @@ class NGP(nn.Module):
 
         # constants
         L = 16; F = 2; log2_T = 19; N_min = 16
-        b = np.exp(np.log(2048*scale/N_min)/(L-1))
-        print(f'GridEncoding: Nmin={N_min} b={b:.5f} F={F} T=2^{log2_T} L={L}')
 
-        self.xyz_encoder = \
-            tcnn.NetworkWithInputEncoding(
-                n_input_dims=3, n_output_dims=16,
-                encoding_config={
-                    "otype": "Grid",
+        self.use_smooth_encoding = True
+        if self.use_smooth_encoding:
+            b = np.exp(np.log(512*scale/N_min)/(L-1))
+            encoding_config = {
+                "otype": "Composite",
+	        "nested": [
+                    {
+                        "otype": "Grid",
 	                "type": "Hash",
-                    "n_levels": L,
-                    "n_features_per_level": F,
-                    "log2_hashmap_size": log2_T,
-                    "base_resolution": N_min,
-                    "per_level_scale": b,
-                    "interpolation": "Linear"
+                        "n_levels": L,
+                        "n_features_per_level": F,
+                        "log2_hashmap_size": log2_T,
+                        "base_resolution": N_min,
+                        "per_level_scale": b,
+                        "n_dims_to_encode": 3,
+                        "interpolation": "Linear"
+                    },
+                    {
+	                "otype": "Frequency",
+	                "n_frequencies": 10,
+                        "n_dims_to_encode": 3,
+                    }
+                ]}
+            # TODO: bypass network to rgb
+            #"""
+            self.bypass_rgb_net = tcnn.NetworkWithInputEncoding(
+                n_input_dims=3,
+                n_output_dims=3,
+                encoding_config={
+                    "otype": "Frequency",
+                    "n_frequencies": 10,
                 },
                 network_config={
                     "otype": "FullyFusedMLP",
                     "activation": "ReLU",
                     "output_activation": "None",
                     "n_neurons": 64,
-                    "n_hidden_layers": 1,
+                    "n_hidden_layers": 2,
+                }
+            )
+            #"""
+        else:
+            b = np.exp(np.log(2048*scale/N_min)/(L-1))
+            encoding_config = {
+                "otype": "Grid",
+	        "type": "Hash",
+                "n_levels": L,
+                "n_features_per_level": F,
+                "log2_hashmap_size": log2_T,
+                "base_resolution": N_min,
+                "per_level_scale": b,
+                "interpolation": "Linear"
+            }
+
+        print(f'GridEncoding: Nmin={N_min} b={b:.5f} F={F} T=2^{log2_T} L={L}')
+        self.xyz_encoder = \
+            tcnn.NetworkWithInputEncoding(
+                n_input_dims=6 if self.use_smooth_encoding else 3,
+                n_output_dims=32 if self.use_smooth_encoding else 16,
+                encoding_config=encoding_config,
+                network_config={
+                    "otype": "FullyFusedMLP",
+                    "activation": "ReLU",
+                    "output_activation": "None",
+                    "n_neurons": 64,
+                    "n_hidden_layers": 2 if self.use_smooth_encoding else 1,
                 }
             )
 
@@ -66,11 +115,11 @@ class NGP(nn.Module):
 
         self.rgb_net = \
             tcnn.Network(
-                n_input_dims=32, n_output_dims=3,
+                n_input_dims=48 if self.use_smooth_encoding else 32, n_output_dims=3,
                 network_config={
                     "otype": "FullyFusedMLP",
                     "activation": "ReLU",
-                    "output_activation": self.rgb_act,
+                    "output_activation": "None",
                     "n_neurons": 64,
                     "n_hidden_layers": 2,
                 }
@@ -96,27 +145,40 @@ class NGP(nn.Module):
             # b = np.exp(np.log(2048*scale/N_min)/(L-1))
             b = np.exp(np.log(128*scale/N_min)/(L-1))  # feature is of lower-frequency
             self.feature_encoder = tcnn.NetworkWithInputEncoding(
-                n_input_dims=3, n_output_dims=self.feature_out_dim,
+                n_input_dims=6, n_output_dims=self.feature_out_dim,
                 encoding_config={
-                    "otype": "Grid",
-	            "type": "Hash",
-                    "n_levels": L,
-                    "n_features_per_level": F,
-                    "log2_hashmap_size": log2_T,
-                    "base_resolution": N_min,
-                    "per_level_scale": b,
-                    "interpolation": "Linear"
-                },
+                    "otype": "Composite",
+	            "nested": [
+                        {
+                            "otype": "Grid",
+	                    "type": "Hash",
+                            "n_levels": L,
+                            "n_features_per_level": F,
+                            "log2_hashmap_size": log2_T,
+                            "base_resolution": N_min,
+                            "per_level_scale": b,
+                            "n_dims_to_encode": 3,
+                            "interpolation": "Linear"
+                        },
+                        {
+	                    "otype": "Frequency",
+	                    "n_frequencies": 8,
+                            "n_dims_to_encode": 3,
+                        }
+                    ]},
                 network_config={
                     "otype": "FullyFusedMLP",
                     "activation": "ReLU",
                     "output_activation": "None",
-                    "n_neurons": 64,
+                    "n_neurons": 128,
                     "n_hidden_layers": 2,
                 }
             )
+            # TODO: separate the final layer and make efficient queried dot product by layer-query fusion
+            """
             self.basenet_to_feature = tcnn.Network(
-                n_input_dims=16+3, n_output_dims=self.feature_out_dim,
+                n_input_dims=32 if self.use_smooth_encoding else 16,
+                n_output_dims=self.feature_out_dim,
                 network_config={
                     "otype": "FullyFusedMLP",
                     "activation": "ReLU",
@@ -125,6 +187,7 @@ class NGP(nn.Module):
                     "n_hidden_layers": 1,
                 }
             )
+            """
         else:
             self.feature_encoder = None
 
@@ -138,7 +201,10 @@ class NGP(nn.Module):
             sigmas: (N)
         """
         x = (x-self.xyz_min)/(self.xyz_max-self.xyz_min)
-        h = self.xyz_encoder(x)
+        if self.use_smooth_encoding:
+            h = self.xyz_encoder(torch.cat([x, x], dim=-1))
+        else:
+            h = self.xyz_encoder(x)
         sigmas = TruncExp.apply(h[:, 0])
         if return_feat: return sigmas, h
         return sigmas
@@ -177,25 +243,46 @@ class NGP(nn.Module):
             rgbs: (N, 3)
         """
         sigmas, h = self.density(x, return_feat=True)
+        if kwargs.get('detach_geometry', False):
+            sigmas = sigmas.detach()
+            h = h.detach()
+            # .detach() enables the network to completely preserve geometry,
+            # because self.xyz_encoder is not updated.
+            # However, it limits the degree of freedom of optimization and
+            # could make difficulty of large appearance changes.
+            # So, instead of the complete .detach(),
+            # this straight-through estimator-like trick enables the network
+            # to optimize self.xyz_encoder 'a little'.
+            # h = h.detach() * 0.999 + h * 0.001
         d = d/torch.norm(d, dim=1, keepdim=True)
         d = self.dir_encoder((d+1)/2)
         rgbs = self.rgb_net(torch.cat([d, h], 1))
+
+        if self.use_smooth_encoding:
+            rgbs = rgbs + self.bypass_rgb_net((x-self.xyz_min)/(self.xyz_max-self.xyz_min))
 
         if self.rgb_act == 'None': # rgbs is log-radiance
             if kwargs.get('output_radiance', False): # output HDR map
                 rgbs = TruncExp.apply(rgbs)
             else: # convert to LDR using tonemapper networks
                 rgbs = self.log_radiance_to_rgb(rgbs, **kwargs)
+        else:
+            assert self.rgb_act == 'Sigmoid'
+            rgbs = torch.sigmoid(rgbs)
 
         if self.feature_encoder is not None and not kwargs.get('skip_feature', False):
             features = self.encode_feature(x)
-            features = features + self.basenet_to_feature(torch.cat([h, rgbs]).detach())
+            # features = features + self.basenet_to_feature(h.detach())
             return sigmas, rgbs, features
         else:
             return sigmas, rgbs
 
     def encode_feature(self, x):
-        features = self.feature_encoder((x-self.xyz_min)/(self.xyz_max-self.xyz_min))
+        x = (x-self.xyz_min)/(self.xyz_max-self.xyz_min)
+        if self.use_smooth_encoding:
+            features = self.feature_encoder(torch.cat([x, x], dim=-1))
+        else:
+            features = self.feature_encoder(x)
         return features
 
     @torch.no_grad()
@@ -254,8 +341,11 @@ class NGP(nn.Module):
         """
         N_cams = poses.shape[0]
         self.count_grid = torch.zeros_like(self.density_grid)
+
         # w2c_R = poses[:, :3, :3].mT # (N_cams, 3, 3) batch transpose
         w2c_R = poses[:, :3, :3].transpose(1, 2) # (N_cams, 3, 3) batch transpose
+        #w2c_R = rearrange(poses[:, :3, :3], 'n a b -> n b a') # (N_cams, 3, 3)
+
         w2c_T = -w2c_R@poses[:, :3, 3:] # (N_cams, 3, 1)
         cells = self.get_all_cells()
         for c in range(self.cascades):
@@ -314,3 +404,46 @@ class NGP(nn.Module):
 
         vren.packbits(self.density_grid, min(mean_density, density_threshold),
                       self.density_bitfield)
+
+    def calculate_selection_score_from_xyz(self, x, query_features=None):
+        features = self.encode_feature(x)
+        return self.calculate_selection_score(features, query_features)
+
+    def calculate_selection_score(self, features, query_features=None):
+        features /= features.norm(dim=-1, keepdim=True)
+        if query_features is None:
+            query_features = self.query_features
+        query_features /= query_features.norm(dim=-1, keepdim=True)
+        scores = features.half() @ query_features.T.half()  # (N_points, n_texts)
+        if scores.shape[-1] == 1:
+            score_threshold = self.score_threshold if self.score_threshold is not None else 0.4
+            scores = scores[:, 0]  # (N_points,)
+            scores = (scores >= score_threshold).float()
+        else:
+            scores = torch.nn.functional.softmax(scores, dim=-1)  # (N_points, n_texts)
+            if self.score_threshold is not None:
+                scores = scores[:, self.positive_ids].sum(-1)  # (N_points, )
+                scores = (scores >= self.score_threshold).float()
+            else:
+                scores[:, self.positive_ids[0]] = scores[:, self.positive_ids].sum(-1)  # (N_points, )
+                scores = torch.isin(torch.argmax(scores, dim=-1), torch.tensor(self.positive_ids).cuda()).float()
+        return scores
+
+    def sample_density(self, density_threshold, warmup=False):
+        density_grid_tmp = 0
+        if warmup: # during the first steps
+            cells = self.get_all_cells()
+        else:
+            cells = self.sample_uniform_and_occupied_cells(self.grid_size**3//4,
+                                                           density_threshold)
+        # infer sigmas
+        for c in range(self.cascades):
+            indices, coords = cells[c]
+            s = min(2**(c-1), self.scale)
+            half_grid_size = s/self.grid_size
+            xyzs_w = (coords/(self.grid_size-1)*2-1)*(s-half_grid_size)
+            # pick random position in the cell by adding noise in [-hgs, hgs]
+            xyzs_w += (torch.rand_like(xyzs_w)*2-1) * half_grid_size
+            density_grid_tmp = density_grid_tmp + self.density(xyzs_w).mean()
+
+        return density_grid_tmp

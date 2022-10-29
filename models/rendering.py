@@ -96,6 +96,34 @@ def __render_rays_test(model, rays_o, rays_d, hits_t, **kwargs):
         sigmas = torch.zeros(len(xyzs), device=device)
         rgbs = torch.zeros(len(xyzs), 3, device=device)
         _sigmas, _rgbs = model(xyzs[valid_mask], dirs[valid_mask], skip_feature=True, **kwargs)
+
+        if kwargs.get("edit_dict", {}):
+            _scores = model.calculate_selection_score_from_xyz(xyzs[valid_mask])
+            """
+            _features = model.encode_feature(xyzs[valid_mask])
+            _features /= _features.norm(dim=-1, keepdim=True)
+            _scores = _features @ model.query_features  # (N_points, n_texts)
+            if _scores.shape[-1] == 1:
+                _scores = _scores[:, 0]  # (N_points,)
+                _scores = (_scores >= getattr(model, "score_threshold", 0.3)).float()
+            else:
+                _scores = torch.nn.functional.softmax(_scores, dim=-1)  # (N_points, n_texts)
+                if model.score_threshold is not None:
+                    _scores = _scores[:, model.positive_ids].sum(-1)  # (N_points, )
+                    _scores = (_scores >= model.score_threshold).float()
+                else:
+                    _scores[:, model.positive_ids[0]] = _scores[:, model.positive_ids].sum(-1)  # (N_points, )
+                    _scores = torch.isin(torch.argmax(_scores, dim=-1), torch.tensor(model.positive_ids).cuda()).float()
+            """
+            if "deletion" in kwargs["edit_dict"]:
+                # the paper edits alpha rather than sigma
+                # but, for simplicity, roughly approximate it on sigma
+                _sigmas = torch.where(_scores < 0.5, _sigmas, _sigmas.new_zeros(_sigmas.shape))
+            if "extraction" in kwargs["edit_dict"]:
+                _sigmas = torch.where(_scores > 0.5, _sigmas, _sigmas.new_zeros(_sigmas.shape))
+            if "color_func" in kwargs["edit_dict"]:
+                _rgbs = _rgbs * (1-_scores[:, None]) + kwargs["edit_dict"]["color_func"](_rgbs) * _scores[:, None]
+
         sigmas[valid_mask], rgbs[valid_mask] = _sigmas.float(), _rgbs.float()
         sigmas = rearrange(sigmas, '(n1 n2) -> n1 n2', n2=N_samples)
         rgbs = rearrange(rgbs, '(n1 n2) c -> n1 n2 c', n2=N_samples)
@@ -140,25 +168,31 @@ def __render_rays_train(model, rays_o, rays_d, hits_t, **kwargs):
     exp_step_factor = kwargs.get('exp_step_factor', 0.)
     results = {}
 
-    rays_a, xyzs, dirs, results['deltas'], results['ts'], total_samples = \
+    rays_a, xyzs, dirs, results['deltas'], results['ts'], results['rm_samples'] = \
         RayMarcher.apply(
             rays_o, rays_d, hits_t[:, 0], model.density_bitfield,
             model.cascades, model.scale,
             exp_step_factor, model.grid_size, MAX_SAMPLES)
-    results['total_samples'] = total_samples
 
     for k, v in kwargs.items(): # supply additional inputs, repeated per ray
         if isinstance(v, torch.Tensor):
             kwargs[k] = torch.repeat_interleave(v[rays_a[:, 0]], rays_a[:, 2], 0)
     sigmas, rgbs = model(xyzs, dirs, skip_feature=True, **kwargs)
 
-    results['opacity'], results['depth'], results['rgb'], results['ws'] = \
-        VolumeRenderer.apply(sigmas, rgbs.contiguous(), results['deltas'], results['ts'],
+    (results['vr_samples'], # volume rendering effective samples
+    results['opacity'], results['depth'], results['rgb'], results['ws']) = \
+        VolumeRenderer.apply(sigmas.contiguous(), rgbs.contiguous(), results['deltas'], results['ts'],
                              rays_a, kwargs.get('T_threshold', 1e-4))
     results['rays_a'] = rays_a
 
-    surfaces = rays_o + rays_d * results['depth'].detach()[..., None]
-    results['feature'] = model.encode_feature(surfaces)
+    # efficient rendering of feature:
+    # this uses only few points arround the (pseudo) surface and simply averages it.
+    depth_with_noise = results['depth'].detach()[..., None] + torch.tensor([-0.005, -0.002, 0.0, 0.002, 0.005]).float().cuda()[None, :]
+    surfaces = rays_o[..., None, :] + rays_d[..., None, :] * depth_with_noise[..., None]  # (n,noise,3 xyz)
+    results['feature'] = model.encode_feature(surfaces.reshape(-1, 3)).reshape(rays_o.shape[0], 5, -1).mean(1)
+    # single point:
+    # surfaces = rays_o + rays_d * results['depth'].detach()[..., None]
+    # results['feature'] = model.encode_feature(surfaces)
 
     if exp_step_factor==0: # synthetic
         rgb_bg = torch.ones(3, device=rays_o.device)

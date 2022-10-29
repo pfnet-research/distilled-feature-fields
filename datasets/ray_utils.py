@@ -61,8 +61,12 @@ def get_rays(directions, c2w):
         # Rotate ray directions from camera coordinate to the world coordinate
         rays_d = directions @ c2w[:, :3].T
     else:
+
         # rays_d = rearrange(directions, 'n c -> n 1 c') @ c2w[..., :3].mT
         rays_d = rearrange(directions, 'n c -> n 1 c') @ c2w[..., :3].transpose(1, 2)
+
+        #rays_d = rearrange(directions, 'n c -> n 1 c') @ \
+        #         rearrange(c2w[..., :3], 'n a b -> n b a')
         rays_d = rearrange(rays_d, 'n 1 c -> n c')
     # The origin of all rays is the camera origin in world coordinate
     rays_o = c2w[..., 3].expand_as(rays_d)
@@ -77,11 +81,14 @@ def axisangle_to_R(v):
     from https://github.com/ActiveVisionLab/nerfmm/blob/main/utils/lie_group_helper.py#L47
 
     Inputs:
-        v: (B, 3)
+        v: (3) or (B, 3)
     
     Outputs:
-        R: (B, 3, 3)
+        R: (3, 3) or (B, 3, 3)
     """
+    v_ndim = v.ndim
+    if v_ndim==1:
+        v = rearrange(v, 'c -> 1 c')
     zero = torch.zeros_like(v[:, :1]) # (B, 1)
     skew_v0 = torch.cat([zero, -v[:, 2:3], v[:, 1:2]], 1) # (B, 3)
     skew_v1 = torch.cat([v[:, 2:3], zero, -v[:, 0:1]], 1)
@@ -92,6 +99,8 @@ def axisangle_to_R(v):
     eye = torch.eye(3, device=v.device)
     R = eye + (torch.sin(norm_v)/norm_v)*skew_v + \
         ((1-torch.cos(norm_v))/norm_v**2)*(skew_v@skew_v)
+    if v_ndim==1:
+        R = rearrange(R, '1 c d -> c d')
     return R
 
 
@@ -208,3 +217,44 @@ def create_spheric_poses(radius, mean_h, n_poses=120):
     for th in np.linspace(0, 2*np.pi, n_poses+1)[:-1]:
         spheric_poses += [spheric_pose(th, -np.pi/12, radius)]
     return np.stack(spheric_poses, 0)
+
+
+def create_spheric_poses_fixed(camera_points, n_poses=120):
+    """
+    Create circular poses around z axis.
+    Inputs:
+        camera_points: the (n_poses, 3).
+    Outputs:
+        spheric_poses: (n_poses, 3, 4) the poses in the circular path
+    """
+    def spheric_pose(theta, phi, radius):
+        trans_t = lambda t : np.array([
+            [1,0,0,0],
+            [0,1,0,2*mean_h],
+            [0,0,1,-t]
+        ])
+
+        rot_phi = lambda phi : np.array([
+            [1,0,0],
+            [0,np.cos(phi),-np.sin(phi)],
+            [0,np.sin(phi), np.cos(phi)]
+        ])
+
+        rot_theta = lambda th : np.array([
+            [np.cos(th),0,-np.sin(th)],
+            [0,1,0],
+            [np.sin(th),0, np.cos(th)]
+        ])
+
+        c2w = rot_theta(theta) @ rot_phi(phi) @ trans_t(radius)
+        c2w = np.array([[-1,0,0],[0,0,1],[0,1,0]]) @ c2w
+        return c2w
+    center = camera_points.mean(0)
+    radius, mean_h = 1.3, center[1]
+    spheric_poses = []
+    for th in np.linspace(0, 2*np.pi, n_poses+1)[:-1]:
+        spheric_poses += [spheric_pose(th, -np.pi/12, radius)]
+    spheric_poses = np.stack(spheric_poses, 0)
+    spheric_poses[:, :, 3] = spheric_poses[:, :, 3] + center[None]
+    spheric_poses[:, 1, 3] = spheric_poses[:, 1, 3] - center[1] * 1.5
+    return spheric_poses

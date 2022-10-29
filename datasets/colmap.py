@@ -13,8 +13,8 @@ from .base import BaseDataset
 
 
 class ColmapDataset(BaseDataset):
-    def __init__(self, root_dir, split='train', downsample=1.0, **kwargs):
-        super().__init__(root_dir, split, downsample)
+    def __init__(self, root_dir, split='train', downsample=1.0, len_per_epoch=1000, **kwargs):
+        super().__init__(root_dir, split, downsample, len_per_epoch)
 
         self.read_intrinsics()
 
@@ -86,6 +86,10 @@ class ColmapDataset(BaseDataset):
         self.rays = []
         if split == 'test_traj': # use precomputed test poses
             self.poses = create_spheric_poses(1.2, self.poses[:, 1, 3].mean())
+            self.poses = torch.FloatTensor(self.poses)
+            return
+        if split == 'test_traj_fixed': # use precomputed test poses
+            self.poses = create_spheric_poses_fixed(self.poses[:, :, 3])
             self.poses = torch.FloatTensor(self.poses)
             return
 
