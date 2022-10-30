@@ -42,13 +42,13 @@ python render.py --root_dir sample_dataset --dataset_name colmap --downsample 0.
 
 colmap
 ```
-colmap feature_extractor --ImageReader.camera_model OPENCV --SiftExtraction.estimate_affine_shape=true --SiftExtraction.domain_size_pooling=true --ImageReader.single_camera 1 --database_path sample_dataset2/database.db --image_path sample_dataset2/images --SiftExtraction.use_gpu=false
-colmap exhaustive_matcher --SiftMatching.guided_matching=true --database_path sample_dataset2/database.db --SiftMatching.use_gpu=false
-mkdir sample_dataset2/sparse
-colmap mapper --database_path sample_dataset2/database.db --image_path sample_dataset2/images --output_path sample_dataset2/sparse
-colmap bundle_adjuster --input_path sample_dataset2/sparse/0 --output_path sample_dataset2/sparse/0 --BundleAdjustment.refine_principal
+colmap feature_extractor --ImageReader.camera_model OPENCV --SiftExtraction.estimate_affine_shape=true --SiftExtraction.domain_size_pooling=true --ImageReader.single_camera 1 --database_path sample_dataset/database.db --image_path sample_dataset/images --SiftExtraction.use_gpu=false
+colmap exhaustive_matcher --SiftMatching.guided_matching=true --database_path sample_dataset/database.db --SiftMatching.use_gpu=false
+mkdir sample_dataset/sparse
+colmap mapper --database_path sample_dataset/database.db --image_path sample_dataset/images --output_path sample_dataset/sparse
+colmap bundle_adjuster --input_path sample_dataset/sparse/0 --output_path sample_dataset/sparse/0 --BundleAdjustment.refine_principal
 _point 1
-colmap image_undistorter --image_path sample_dataset2/images --input_path sample_dataset2/sparse/0 --output_path sample_dataset2_undis
+colmap image_undistorter --image_path sample_dataset/images --input_path sample_dataset/sparse/0 --output_path sample_dataset_undis
 --output_type COLMAP
 ```
 
@@ -62,12 +62,13 @@ pip install -r requirements.txt
 pip install git+https://github.com/zhanghang1989/PyTorch-Encoding/
 ```
 
-Download the LSeg model file from [the Google drive](https://drive.google.com/file/d/1ayk6NXURI_vIPlym16f_RG3ffxBWHxvb/view?usp=sharing).
+Download the LSeg model file `demo_e200.ckpt` from [the Google drive](https://drive.google.com/file/d/1ayk6NXURI_vIPlym16f_RG3ffxBWHxvb/view?usp=sharing).
 
 Encode and save
 ```
-python -u encode_images.py --backbone clip_vitl16_384 --weights demo_e200.ckpt --widehead --no-scaleinv --outdir ../../sample_dataset2_undis/rgb_feature_langseg --test-rgb-dir ../../sample_dataset2_undis/images
+python -u encode_images.py --backbone clip_vitl16_384 --weights demo_e200.ckpt --widehead --no-scaleinv --outdir ../../sample_dataset_undis/rgb_feature_langseg --test-rgb-dir ../../sample_dataset_undis/images
 ```
+This may produces large feature map files in `--outdir` (100-200MB per file).
 
 Run train.py. If reconstruction fails, change `--scale 4.0` to smaller or larger values, e.g., `--scale 1.0` or `--scale 16.0`.
 
