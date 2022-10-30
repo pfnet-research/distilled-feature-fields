@@ -19,6 +19,8 @@ cd apex && pip install -v --disable-pip-version-check --no-cache-dir --global-op
 pip install models/csrc/
 ```
 
+(Download [a sample dataset](https://github.com/pfnet-research/distilled-feature-fields/releases/download/tmp/sample_dataset.zip) or see `With New Scene` section below.)
+
 Train
 - `--root_dir` is the dataset of images with poses.
 - `--feature_directory` is the dataset of feature maps for distillation. `--feature_dim` matches the dimension of them.
