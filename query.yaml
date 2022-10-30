@@ -1,12 +1,8 @@
 query:
   query_type: "text"
   texts: ["apple", "banana", "vegetables", "floor"]
-  positive_ids: [0]
-  score_threshold: # empty means None
-  # query_type: "direct"
-  # query_path: "hogehoge_C.pth"
-  # query_type: "patch"
-  # query_frame_path: "hogehoge_CHW.pth"
+  positive_ids: [0] # indices of target texts
+  score_threshold: # empty means None. use argmax.
 
 edit:
   operations:
@@ -14,4 +10,3 @@ edit:
     #- edit_type: "deletion"
     #- edit_type: "color_func"
     #  func_str: "lambda c: c[..., [2,1,0]]"  # rgb -> bgr
-  # edit_type: 
