@@ -1,8 +1,9 @@
 # Distilled Feature Fields
 
-The simpler and faster demo codebase of [distilled feature fields (DFFs)](https://pfnet-research.github.io/distilled-feature-fields/) (Kobayashi et al. NeurIPS 2022).
+This is a simpler and faster demo codebase of [distilled feature fields (DFFs)](https://pfnet-research.github.io/distilled-feature-fields/) (Kobayashi et al. NeurIPS 2022).
 Note that this does not contain the comprehensive scripts for all the experiments.
 
+https://user-images.githubusercontent.com/9245278/198859321-9258f101-de76-422a-927a-91fe76d75bbd.mp4
 
 ## Example
 
