@@ -19,16 +19,23 @@ pip install models/csrc/
 ```
 
 Train
+- `--root_dir` is the dataset of images with poses.
+- `--feature_directory` is the dataset of feature maps for distillation. `--feature_dim` matches the dimension of them.
 ```
 python train.py --root_dir sample_dataset --dataset_name colmap --exp_name exp_v1 --downsample 0.25 --num_epochs 4 --batch_size 4096 --scale 4.0 --ray_sampling_strategy same_image --feature_dim 512 --random_bg --feature_directory sample_dataset/rgb_feature_langseg
 ```
 
 CLIPNeRF-optimize
+- `--clipnerf_text rainbow_apple` optimizes the scene to `rainbow apple`
+- `--clipnerf_filter_text apple banana vegetable floor` removes rays of `banana`, `vegetable`, and `floor` from optimization, and optimizes rays of `apple` only
+- Set `--weight_path` with the checkpoint above.
 ```
 python train.py --root_dir sample_dataset --dataset_name colmap --exp_name exp_v1_clip --downsample 0.25 --num_epochs 1 --batch_size 4096 --scale 4.0 --ray_sampling_strategy same_image --feature_dim 512 --random_bg --clipnerf_text rainbow_apple --clipnerf_filter_text apple banana vegetable floor --weight_path ckpts/colmap/exp_v1/epoch=3_slim.ckpt --accumulate_grad_batches 2
 ```
 
 Render with Edit
+- Modify `--edit_config` or codebase itself for other editings.
+- Set `--ckpt_path` with the checkpoint above.
 ```
 python render.py --root_dir sample_dataset --dataset_name colmap --downsample 0.25 --scale 4.0 --ray_sampling_strategy same_image --feature_dim 512 --ckpt_path ckpts/colmap/exp_v1_clip/epoch\=0_slim.ckpt --edit_config query.yaml
 # ls ./renderd_*.png
