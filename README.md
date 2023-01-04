@@ -15,6 +15,7 @@ pip install torch-scatter -f https://data.pyg.org/whl/torch-1.10.2+cu111.html
 
 pip install -r requirements.txt
 pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+git submodule update --init --recursive
 cd apex && pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./ && cd ..
 pip install models/csrc/
 ```
