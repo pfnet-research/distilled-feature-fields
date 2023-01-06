@@ -38,23 +38,8 @@ class FolderLoader(enc_ds.ADE20KSegmentation):#(torch.utils.data.Dataset):
 
 def get_folder_images(img_folder):
     img_paths = []
-    # sorted(glob.glob(self.rgb_dir + '/rgb*.png'), key=lambda file_name: int(file_name.split("_")[-1][:-4]))
-    # for filename in sorted(os.listdir(img_folder)):
-    # rgb_885.png
-    # for filename in sorted(glob.glob(img_folder.rstrip("/") + '/rgb*.png'), key=lambda file_name: int(file_name.split("_")[-1][:-4])):
-    #if "colmap" in img_folder or "llff" in img_folder:
     glist = list(glob.glob(img_folder.rstrip("/") + '/*.png')) + list(glob.glob(img_folder.rstrip("/") + '/*.jpg'))
-    glist = sorted(glist)
-    #for rep
-    #else:
-    #    glist = glob.glob(img_folder.rstrip("/") + '/rgb*.png')
-    #    glist = sorted(glist, key=lambda file_name: int(file_name.split("_")[-1][:-4]))
-    for filename in glist:
-        #if filename.endswith(".jpg") or filename.endswith(".png"):
-        imgpath = os.path.join(img_folder, filename)
-        img_paths.append(imgpath)
-        print(imgpath)
-    return img_paths
+    return list(sorted(glist))
 
 
 def get_dataset(name, **kwargs):
