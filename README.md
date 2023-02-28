@@ -102,3 +102,7 @@ The paper bibtex is as follows
   year={2022}
 }
 ```
+
+#### Concurrent work
+
+A concurrent work by [Tschernezki et al.](https://www.robots.ox.ac.uk/~vgg/publications/2022/Tschernezki22/tschernezki22.pdf) also explores feature fields. Please check out [their codebase](https://github.com/dichotomies/N3F).
